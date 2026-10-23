@@ -1,0 +1,416 @@
+import flet as ft
+
+from connexion_mysql_banque import connexion_banque
+from comptes import creat_comptes
+from all_fonction_comptes import add_comptes, delete_comptes, add_money, delete_money, voir_comptes
+import re
+from all_code_backend import verification
+
+pattern_code = "^[0-9]{6}$"
+
+connexion = connexion_banque()
+
+curseur = connexion.cursor()
+
+creat_comptes()
+
+connexion.commit()
+
+def return_page(page: ft.Page):
+    page.clean()
+    page_accueil(page)
+
+def page_utilisateur(nom, prenom, solde, page: ft.Page):
+    page.appbar = None
+    page.clean()
+
+    page.vertical_alignment = ft.MainAxisAlignment.START
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+    champs_montant = ft.TextField(label="Enter your amount", width=300)
+    solde_client = ft.Text(f"Solde : {solde:.2f} €", size=24, weight=ft.FontWeight.BOLD)
+    message_utilisateur = ft.Text("")
+
+    def deposer(e):
+        nonlocal solde
+        try:
+            montant = float(champs_montant.value)
+        except (ValueError, TypeError):
+            message_utilisateur.value = "Enter a number please !"
+            message_utilisateur.color = ft.Colors.RED
+            page.update()
+            return
+
+        if montant <= 0:
+            message_utilisateur.value = "Enter a number above 0 !"
+            message_utilisateur.color = ft.Colors.RED
+            page.update()
+            return
+
+        solde += montant
+        solde_client.value = f"Solde : {solde:.2f} €"
+        add_money(solde, nom, prenom)
+        message_utilisateur.value = "deposit valide !"
+        message_utilisateur.color = ft.Colors.GREEN
+        page.update()
+
+    def retirer(e):
+        nonlocal solde
+        try:
+            montant = float(champs_montant.value)
+        except (ValueError, TypeError):
+            message_utilisateur.value = "Enter a number please !"
+            message_utilisateur.color = ft.Colors.RED
+            page.update()
+            return
+
+        if montant <= 0:
+            message_utilisateur.value = "Enter a number above 0 !"
+            message_utilisateur.color = ft.Colors.RED
+            page.update()
+            return
+
+        if solde < montant:
+            message_utilisateur.value = "Montant insuffisent !"
+            message_utilisateur.color = ft.Colors.RED
+            page.update()
+            return
+
+        solde -= montant
+        solde_client.value = f"Solde : {solde:.2f} €"
+        delete_money(solde, nom, prenom)
+        message_utilisateur.value = "withdraw valide !"
+        message_utilisateur.color = ft.Colors.GREEN
+        page.update()
+
+
+
+    page_delete_compte = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Delete account"),
+        content=ft.Text("Are you sure you want delete account ?"),
+        actions_alignment=ft.MainAxisAlignment.END
+    )
+
+    page.overlay.append(page_delete_compte)
+
+    def delete_user(e):
+        page_delete_compte.open = False
+        page.clean()
+        page.vertical_alignment = ft.MainAxisAlignment.CENTER
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+        delete_comptes(nom, prenom)
+
+        colonne_delete_user = ft.Column(controls=[ft.Image(src="logo_valider_2.avif", width=300, height=300), ft.Text("Delete accounte valide !", color="green"),
+                                                  ft.ElevatedButton("Return welcom", width=200, on_click=lambda e:return_page(page),
+                                                                    style=ft.ButtonStyle(
+                                                                        color=ft.Colors.WHITE,
+                                                                        bgcolor=ft.Colors.BLUE_900,
+                                                                        overlay_color=ft.Colors.BLUE_700
+                                                                    )
+                                                                    )
+                                                  ],
+                                        horizontal_alignment=ft.CrossAxisAlignment.CENTER
+                                        )
+        page.add(colonne_delete_user)
+
+    def fermer_p_delete_c(e):
+        page_delete_compte.open = False
+        page.update()
+        page_utilisateur(nom, prenom, solde, page)
+
+
+
+    button_non = ft.ElevatedButton("No", width=100, on_click=fermer_p_delete_c, style=ft.ButtonStyle(
+    color=ft.Colors.WHITE,
+    bgcolor=ft.Colors.RED_900,
+    overlay_color=ft.Colors.RED_200
+)
+                                     )
+    button_oui = ft.ElevatedButton("Yes", width=100, on_click=delete_user, style=ft.ButtonStyle(
+    color=ft.Colors.WHITE,
+    bgcolor=ft.Colors.BLUE_900,
+    overlay_color=ft.Colors.BLUE_700
+)
+                                     )
+
+    page_delete_compte.actions = [button_oui, button_non]
+
+    def ouvrir_p_delete_compte(e):
+        page.dialog = page_delete_compte
+        page_delete_compte.open = True
+        page.update()
+
+
+
+    button_deposer = ft.ElevatedButton("Deposit", width=200, on_click=deposer, style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                         )
+    button_retirer = ft.ElevatedButton("Withdraw", width=200, on_click=retirer, style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                         )
+
+    button_delete_compte = ft.ElevatedButton("Delete account", width=200, on_click=ouvrir_p_delete_compte, style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.RED_900,
+        overlay_color=ft.Colors.RED_200
+    )
+                                         )
+
+    page_decon_confirm = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Logout confirmation"),
+        content=ft.Text("Are you sure you want to log out?"),
+        actions_alignment=ft.MainAxisAlignment.END
+    )
+
+    page.overlay.append(page_decon_confirm)
+
+    def fermer_mini_w(e):
+        page_decon_confirm.open = False
+        page.update()
+
+    def oui_page_decon_confirm(e):
+        page_decon_confirm.open = False
+        page.update()
+        return_page(page)
+
+    button_oui_decon = ft.ElevatedButton(
+        "Yes",
+        width=100,
+        on_click=oui_page_decon_confirm,
+        style=ft.ButtonStyle(
+            color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.BLUE_900,
+            overlay_color=ft.Colors.BLUE_700
+        )
+    )
+
+    button_non_decon = ft.ElevatedButton(
+        "No",
+        width=100,
+        on_click=fermer_mini_w,
+        style=ft.ButtonStyle(
+            color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.BLUE_900,
+            overlay_color=ft.Colors.BLUE_700
+        )
+    )
+
+
+    page_decon_confirm.actions = [button_oui_decon, button_non_decon]
+
+    def ouvrir_page_decon(e):
+        page.dialog = page_decon_confirm
+        page_decon_confirm.open = True
+        page.update()
+
+    button_deconnexion = ft.IconButton(
+        icon=ft.Icons.LOGOUT,
+        tooltip="Se déconnecter",
+        on_click=ouvrir_page_decon
+    )
+
+    header = ft.Row(controls=[button_deconnexion, button_delete_compte], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+    contenu_principal = ft.Column(
+        controls=[
+            ft.Text(f"Hi {prenom} {nom} !", size=30, weight=ft.FontWeight.BOLD),
+            champs_montant,
+            solde_client,
+            button_deposer,
+            button_retirer,
+            message_utilisateur
+        ],
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ft.MainAxisAlignment.CENTER,
+        expand=True)
+
+    page.add(header, contenu_principal)
+
+
+def traitement_connexion(nom, prenom, code, message, page: ft.Page):
+    nom_v = nom.value.strip()
+    prenom_v = prenom.value.strip()
+    code_v = code.value.strip()
+
+    if nom_v.isalpha() == False:
+        message.value = "Your nom or prenom is incorrect !"
+        page.update()
+        return
+
+    if prenom_v.isalpha() == False:
+        message.value = "Your nom or prenom is incorrect !"
+        page.update()
+        return
+
+    verifi_code_connect = verification(code_v, pattern_code)
+
+    if verifi_code_connect == False:
+        message.value = "Your code is incorrect !"
+        page.update()
+        return
+
+    curseur.execute("SELECT id, nom, prenom, age, solde, code FROM comptes WHERE nom=%s AND prenom=%s AND code=%s", (nom_v, prenom_v, code_v))
+    info_client = curseur.fetchone()
+
+    if info_client == None:
+        message.value = "Your information is not in the database !"
+        page.update()
+        return
+
+    page_utilisateur(nom_v, prenom_v, float(info_client[4]), page)
+
+
+
+def traitement_inscription(nom, prenom, age, message, page: ft.Page):
+    nom_v = nom.value.strip()
+    prenom_v = prenom.value.strip()
+    age_v = age.value.strip()
+
+    if nom_v.isalpha() == False:
+        message.value = "Your nom or prenom is incorrect !"
+        page.update()
+        return
+
+    if prenom_v.isalpha() == False:
+        message.value = "Your nom or prenom is incorrect !"
+        page.update()
+        return
+
+    if age_v.isdigit() == False or int(age_v) < 15:
+        message.value = "Your age is incorrect (+15y)"
+        page.update()
+        return
+
+
+    page.clean()
+
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+    code_input_i = ft.TextField(label="Enter your code", width=400, password=True, can_reveal_password=True)
+    message_code = ft.Text("", color="red")
+
+
+    button_valider = ft.ElevatedButton("Valider code", width=200, on_click=lambda e: page_utilisateur(nom_v, prenom_v, 0, page), style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                         )
+    button_back = ft.IconButton(
+        icon=ft.Icons.LOGOUT,
+        tooltip="Back to welcom page",
+        on_click=lambda e: return_page(page)
+    )
+    page.appbar = ft.AppBar(leading=button_back)
+
+    def button_code(e):
+        nonlocal message_code
+        code_v = code_input_i.value
+        verifie_code = verification(code_v, pattern_code)
+
+        if verifie_code == True:
+            add_comptes(nom_v, prenom_v, int(age_v), 0, code_v)
+            page.appbar = None
+            page.clean()
+            logo_valider_i = ft.Image(src="logo_valider_2.avif", width=300, height=300)
+            page.add(logo_valider_i, ft.Text("Account creation complete", color="green"), button_valider)
+        else:
+            message_code.value = "Your code is incorrect !"
+            page.update()
+
+    button_code_result = ft.ElevatedButton("Valider code", width=200, on_click=button_code, style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                         )
+
+    page.add(ft.Text(f"Welcome {nom_v} {prenom_v} in your bank."), code_input_i, message_code, button_code_result)
+
+
+
+
+
+def page_accueil(page: ft.Page):
+    page.appbar = None
+    #inscritption
+    text_inscription = ft.Container(
+        content=ft.Text("Inscription", size=30, weight=ft.FontWeight.BOLD),
+        margin=ft.Margin(left=0, top=0, right=0, bottom=40)
+    )
+    name_input_i = ft.TextField(label="Enter your name", width=400)
+    prenom_input_i = ft.TextField(label="Enter your prenom", width=400)
+    age_input_i = ft.TextField(label="Enter your age", width=400)
+    message_i = ft.Text("", color="red")
+
+    #connexion
+    text_connexion = ft.Container(
+        content=ft.Text("Connexion", size=30, weight=ft.FontWeight.BOLD),
+        margin=ft.Margin(left=0, top=0, right=0, bottom=40)
+    )
+    name_input_c = ft.TextField(label="Enter your name", width=400)
+    prenom_input_c = ft.TextField(label="Enter your prenom", width=400)
+    code_input_c = ft.TextField(label="Enter your code", width=400)
+    message_c = ft.Text("", color="red")
+
+
+    #buttons
+    button_inscription = ft.ElevatedButton("Inscription", width=200, on_click=lambda e: traitement_inscription(name_input_i, prenom_input_i, age_input_i,  message_i, page), style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                           )
+    button_connexion = ft.ElevatedButton("Connexion", width=200, on_click=lambda e: traitement_connexion(name_input_c, prenom_input_c, code_input_c, message_c, page), style=ft.ButtonStyle(
+        color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_900,
+        overlay_color=ft.Colors.BLUE_700
+    )
+                                         )
+
+
+    #colonnes
+    colonne_inscription = ft.Column(controls=[
+        text_inscription, name_input_i, prenom_input_i, age_input_i, message_i, button_inscription
+    ], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER)
+
+    colonne_connexion = ft.Column(controls=[
+        text_connexion, name_input_c, prenom_input_c, code_input_c, message_c, button_connexion
+    ], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER)
+
+
+    #lignes
+    ligne_inscription_connexion = ft.Row(controls=[colonne_inscription, ft.VerticalDivider(), colonne_connexion], expand=True)
+
+    page.add(ligne_inscription_connexion)
+
+
+
+
+
+def main(page: ft.Page):
+    page.title = "My Bank"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.window.width = 1000
+    page.window.height = 800
+
+    page_accueil(page)
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    ft.app(target=main)
